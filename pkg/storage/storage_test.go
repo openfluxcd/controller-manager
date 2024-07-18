@@ -30,8 +30,10 @@ import (
 	"testing"
 	"time"
 
-	sourcev1 "github.com/fluxcd/source-controller/api/v1"
 	"github.com/go-git/go-git/v5/plumbing/format/gitignore"
+	. "github.com/onsi/gomega"
+
+	"github.com/openfluxcd/controller-manager/v1"
 )
 
 func TestStorageConstructor(t *testing.T) {
@@ -138,7 +140,7 @@ func TestStorage_Archive(t *testing.T) {
 		return
 	}
 
-	matchFiles := func(t *testing.T, storage *Storage, artifact sourcev1.Artifact, files map[string]dummyFile, dirs []string) {
+	matchFiles := func(t *testing.T, storage *Storage, artifact v1.Artifact, files map[string]dummyFile, dirs []string) {
 		t.Helper()
 		for name, df := range files {
 			mustExist := !(name[0:1] == "!")
@@ -286,7 +288,7 @@ func TestStorage_Archive(t *testing.T) {
 				return
 			}
 			defer os.RemoveAll(dir)
-			artifact := sourcev1.Artifact{
+			artifact := v1.Artifact{
 				Path: filepath.Join(randStringRunes(10), randStringRunes(10), randStringRunes(10)+".tar.gz"),
 			}
 			if err := storage.MkdirAll(artifact); err != nil {
@@ -309,7 +311,7 @@ func TestStorage_Remove(t *testing.T) {
 		s, err := NewStorage(dir, "", 0, 0)
 		g.Expect(err).ToNot(HaveOccurred())
 
-		artifact := sourcev1.Artifact{
+		artifact := v1.Artifact{
 			Path: filepath.Join(dir, "test.txt"),
 		}
 		g.Expect(s.MkdirAll(artifact)).To(Succeed())
@@ -328,7 +330,7 @@ func TestStorage_Remove(t *testing.T) {
 		s, err := NewStorage(dir, "", 0, 0)
 		g.Expect(err).ToNot(HaveOccurred())
 
-		artifact := sourcev1.Artifact{
+		artifact := v1.Artifact{
 			Path: filepath.Join(dir, "test.txt"),
 		}
 
@@ -347,7 +349,7 @@ func TestStorageRemoveAllButCurrent(t *testing.T) {
 			t.Fatalf("Valid path did not successfully return: %v", err)
 		}
 
-		if _, err := s.RemoveAllButCurrent(sourcev1.Artifact{Path: filepath.Join(dir, "really", "nonexistent")}); err == nil {
+		if _, err := s.RemoveAllButCurrent(v1.Artifact{Path: filepath.Join(dir, "really", "nonexistent")}); err == nil {
 			t.Fatal("Did not error while pruning non-existent path")
 		}
 	})
@@ -359,7 +361,7 @@ func TestStorageRemoveAllButCurrent(t *testing.T) {
 		s, err := NewStorage(dir, "hostname", time.Minute, 2)
 		g.Expect(err).ToNot(HaveOccurred(), "failed to create new storage")
 
-		artifact := sourcev1.Artifact{
+		artifact := v1.Artifact{
 			Path: filepath.Join("foo", "bar", "artifact1.tar.gz"),
 		}
 
@@ -420,7 +422,7 @@ func TestStorageRemoveAll(t *testing.T) {
 			s, err := NewStorage(dir, "hostname", time.Minute, 2)
 			g.Expect(err).ToNot(HaveOccurred(), "failed to create new storage")
 
-			artifact := sourcev1.Artifact{
+			artifact := v1.Artifact{
 				Path: tt.artifactPath,
 			}
 
@@ -466,7 +468,7 @@ func TestStorageCopyFromPath(t *testing.T) {
 		return
 	}
 
-	matchFile := func(t *testing.T, storage *Storage, artifact sourcev1.Artifact, file *File, expectMismatch bool) {
+	matchFile := func(t *testing.T, storage *Storage, artifact v1.Artifact, file *File, expectMismatch bool) {
 		c, err := os.ReadFile(storage.LocalPath(artifact))
 		if err != nil {
 			t.Fatalf("failed reading file: %v", err)
@@ -513,7 +515,7 @@ func TestStorageCopyFromPath(t *testing.T) {
 				t.Error(err)
 				return
 			}
-			artifact := sourcev1.Artifact{
+			artifact := v1.Artifact{
 				Path: filepath.Join(randStringRunes(10), randStringRunes(10), randStringRunes(10)),
 			}
 			if err := storage.MkdirAll(artifact); err != nil {
@@ -666,7 +668,7 @@ func TestStorage_getGarbageFiles(t *testing.T) {
 			s, err := NewStorage(dir, "hostname", tt.ttl, tt.maxItemsToBeRetained)
 			g.Expect(err).ToNot(HaveOccurred(), "failed to create new storage")
 
-			artifact := sourcev1.Artifact{
+			artifact := v1.Artifact{
 				Path: tt.artifactPaths[len(tt.artifactPaths)-1],
 			}
 			g.Expect(os.MkdirAll(filepath.Join(dir, artifactFolder), 0o750)).ToNot(HaveOccurred())
@@ -749,7 +751,7 @@ func TestStorage_GarbageCollect(t *testing.T) {
 			s, err := NewStorage(dir, "hostname", time.Second*2, 2)
 			g.Expect(err).ToNot(HaveOccurred(), "failed to create new storage")
 
-			artifact := sourcev1.Artifact{
+			artifact := v1.Artifact{
 				Path: tt.artifactPaths[len(tt.artifactPaths)-1],
 			}
 			g.Expect(os.MkdirAll(filepath.Join(dir, artifactFolder), 0o750)).ToNot(HaveOccurred())
@@ -804,7 +806,7 @@ func TestStorage_VerifyArtifact(t *testing.T) {
 	t.Run("artifact without digest", func(t *testing.T) {
 		g := NewWithT(t)
 
-		err := s.VerifyArtifact(sourcev1.Artifact{})
+		err := s.VerifyArtifact(v1.Artifact{})
 		g.Expect(err).To(HaveOccurred())
 		g.Expect(err).To(MatchError("artifact has no digest"))
 	})
@@ -812,7 +814,7 @@ func TestStorage_VerifyArtifact(t *testing.T) {
 	t.Run("artifact with invalid digest", func(t *testing.T) {
 		g := NewWithT(t)
 
-		err := s.VerifyArtifact(sourcev1.Artifact{Digest: "invalid"})
+		err := s.VerifyArtifact(v1.Artifact{Digest: "invalid"})
 		g.Expect(err).To(HaveOccurred())
 		g.Expect(err).To(MatchError("failed to parse artifact digest 'invalid': invalid checksum digest format"))
 	})
@@ -820,7 +822,7 @@ func TestStorage_VerifyArtifact(t *testing.T) {
 	t.Run("artifact with invalid path", func(t *testing.T) {
 		g := NewWithT(t)
 
-		err := s.VerifyArtifact(sourcev1.Artifact{
+		err := s.VerifyArtifact(v1.Artifact{
 			Digest: "sha256:9ba7a35ce8acd3557fe30680ef193ca7a36bb5dc62788f30de7122a0a5beab69",
 			Path:   "invalid",
 		})
@@ -831,7 +833,7 @@ func TestStorage_VerifyArtifact(t *testing.T) {
 	t.Run("artifact with digest mismatch", func(t *testing.T) {
 		g := NewWithT(t)
 
-		err := s.VerifyArtifact(sourcev1.Artifact{
+		err := s.VerifyArtifact(v1.Artifact{
 			Digest: "sha256:9ba7a35ce8acd3557fe30680ef193ca7a36bb5dc62788f30de7122a0a5beab69",
 			Path:   "artifact",
 		})
@@ -842,7 +844,7 @@ func TestStorage_VerifyArtifact(t *testing.T) {
 	t.Run("artifact with digest match", func(t *testing.T) {
 		g := NewWithT(t)
 
-		err := s.VerifyArtifact(sourcev1.Artifact{
+		err := s.VerifyArtifact(v1.Artifact{
 			Digest: "sha256:9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
 			Path:   "artifact",
 		})
