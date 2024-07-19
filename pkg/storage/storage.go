@@ -56,6 +56,14 @@ const (
 	defaultExeFileMode int64 = 0o700
 )
 
+type Storer interface {
+	// ReconcileStorage is responsible for setting up Storage data like URLs.
+	ReconcileStorage(ctx context.Context, obj Collectable, artifact *v1.Artifact) error
+	ReconcileArtifact(ctx context.Context, obj Collectable, revision, dir, hash string, ignore *string) error
+}
+
+var _ Storer = &Storage{}
+
 // Storage manages artifacts
 type Storage struct {
 	// BasePath is the local directory path where the source artifacts are stored.
@@ -71,6 +79,94 @@ type Storage struct {
 	// ArtifactRetentionRecords is the maximum number of artifacts to be kept in
 	// storage after a garbage collection.
 	ArtifactRetentionRecords int `json:"artifactRetentionRecords"`
+}
+
+// TODO: Oci artifacts have a much more complex artifact reconcile. Maybe that's not the right abstraction.
+func (s Storage) ReconcileArtifact(ctx context.Context, obj Collectable, revision, dir, hash string, ignore *string) error {
+	// Create potential new artifact with current available metadata
+	artifact := s.NewArtifactFor(obj.GetKind(), obj.GetObjectMeta(), revision, fmt.Sprintf("%s.tar.gz", hash))
+
+	// The artifact is up-to-date
+	if curArtifact := artifact; curArtifact.HasRevision(artifact.Revision) {
+		return nil
+	}
+
+	// Ensure target path exists and is a directory
+	if f, err := os.Stat(dir); err != nil {
+		return fmt.Errorf("failed to stat target artifact path: %w", err)
+	} else if !f.IsDir() {
+		return fmt.Errorf("invalid target path: '%s' is not a directory", dir)
+	}
+
+	// Ensure artifact directory exists and acquire lock
+	if err := s.MkdirAll(artifact); err != nil {
+		return fmt.Errorf("failed to create artifact directory: %w", err)
+	}
+
+	unlock, err := s.Lock(artifact)
+	if err != nil {
+		return fmt.Errorf("failed to acquire lock for artifact: %w", err)
+	}
+	defer unlock()
+
+	// Load ignore rules for archiving
+	ignoreDomain := strings.Split(dir, string(filepath.Separator))
+	ps, err := sourceignore.LoadIgnorePatterns(dir, ignoreDomain)
+	if err != nil {
+		return fmt.Errorf("failed to load source ignore patterns from repository: %w", err)
+	}
+
+	if ignoreDomain != nil {
+		ps = append(ps, sourceignore.ReadPatterns(strings.NewReader(*ignore), ignoreDomain)...)
+	}
+
+	// Archive directory to storage
+	if err := s.Archive(&artifact, dir, SourceIgnoreFilter(ps, ignoreDomain)); err != nil {
+		return fmt.Errorf("unable to archive artifact to storage: %w", err)
+	}
+
+	// Remove the deprecated symlink.
+	// Since we won't create a Symlink this might be not needed.
+	//
+	//symArtifact := artifact.DeepCopy()
+	//symArtifact.Path = filepath.Join(filepath.Dir(symArtifact.Path), "latest.tar.gz")
+	//if fi, err := os.Lstat(s.LocalPath(artifact)); err == nil {
+	//	if fi.Mode()&os.ModeSymlink != 0 {
+	//		if err := os.Remove(r.Storage.LocalPath(*symArtifact)); err != nil {
+	//			r.eventLogf(ctx, obj, eventv1.EventTypeTrace, sourcev1.SymlinkUpdateFailedReason,
+	//				"failed to remove (deprecated) symlink: %s", err)
+	//		}
+	//	}
+	//}
+
+	return nil
+}
+
+// ReconcileStorage will do the following actions:
+// - garbage collect old files
+// - verify digest if the artifact does exist ( remove it if the digest doesn't match )
+// - set the url of the artifact.
+func (s Storage) ReconcileStorage(ctx context.Context, obj Collectable, artifact *v1.Artifact) error {
+	// Garbage collect previous advertised artifact(s) from storage
+	if err := s.garbageCollect(ctx, obj, artifact); err != nil {
+		return fmt.Errorf("could not garbage collect artifact: %w", err)
+	}
+
+	if artifact != nil {
+		// If the artifact is in storage, verify if the advertised digest still
+		// matches the actual artifact
+		if s.ArtifactExist(*artifact) {
+			if err := s.VerifyArtifact(*artifact); err != nil {
+				if err = s.Remove(*artifact); err != nil {
+					return fmt.Errorf("failed to remove artifact after digest mismatch: %w", err)
+				}
+			}
+		}
+	}
+
+	s.SetArtifactURL(artifact)
+
+	return nil
 }
 
 // NewStorage creates the storage helper for a given path and hostname.
@@ -716,4 +812,29 @@ func setDefaultMode(h *tar.Header) {
 		h.Mode = defaultFileMode
 		return
 	}
+}
+
+type Collectable interface {
+	GetDeletionTimestamp() *metav1.Time
+	GetObjectMeta() *metav1.ObjectMeta
+	GetKind() string
+}
+
+// garbageCollect will delete old files.
+func (s Storage) garbageCollect(ctx context.Context, obj Collectable, artifact *v1.Artifact) error {
+	if !obj.GetDeletionTimestamp().IsZero() {
+		if _, err := s.RemoveAll(s.NewArtifactFor(obj.GetKind(), obj.GetObjectMeta(), "", "*")); err != nil {
+			return fmt.Errorf("garbage collection for deleted resource failed: %w", err)
+		}
+		return nil
+	}
+	if artifact == nil {
+		return nil
+	}
+
+	if _, err := s.GarbageCollect(ctx, *artifact, time.Second*5); err != nil {
+		return fmt.Errorf("garbage collection of artifacts failed: %w", err)
+	}
+
+	return nil
 }

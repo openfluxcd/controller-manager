@@ -22,18 +22,10 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 )
 
-const (
-	// SourceIndexKey is the key used for indexing objects based on their
-	// referenced Source.
-	SourceIndexKey string = ".metadata.source"
-)
-
 // Source interface must be supported by all API types.
 // Source is the interface that provides generic access to the Artifact and
 // interval. It must be supported by all kinds of the source.toolkit.fluxcd.io
 // API group.
-//
-// +k8s:deepcopy-gen=false
 type Source interface {
 	runtime.Object
 	// GetRequeueAfter returns the duration after which the source must be
