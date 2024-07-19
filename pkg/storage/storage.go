@@ -59,7 +59,7 @@ const (
 type Storer interface {
 	// ReconcileStorage is responsible for setting up Storage data like URLs.
 	ReconcileStorage(ctx context.Context, obj Collectable, artifact *v1.Artifact) error
-	ReconcileArtifact(ctx context.Context, obj Collectable, revision, dir, hash string, ignore *string) error
+	ReconcileArtifact(ctx context.Context, obj Collectable, revision, dir, hash string, archiveFunc func(v1.Artifact) error) error
 }
 
 var _ Storer = &Storage{}
@@ -81,8 +81,7 @@ type Storage struct {
 	ArtifactRetentionRecords int `json:"artifactRetentionRecords"`
 }
 
-// TODO: Oci artifacts have a much more complex artifact reconcile. Maybe that's not the right abstraction.
-func (s Storage) ReconcileArtifact(ctx context.Context, obj Collectable, revision, dir, hash string, ignore *string) error {
+func (s Storage) ReconcileArtifact(ctx context.Context, obj Collectable, revision, dir, hash string, archiveFunc func(v1.Artifact) error) error {
 	// Create potential new artifact with current available metadata
 	artifact := s.NewArtifactFor(obj.GetKind(), obj.GetObjectMeta(), revision, fmt.Sprintf("%s.tar.gz", hash))
 
@@ -109,37 +108,7 @@ func (s Storage) ReconcileArtifact(ctx context.Context, obj Collectable, revisio
 	}
 	defer unlock()
 
-	// Load ignore rules for archiving
-	ignoreDomain := strings.Split(dir, string(filepath.Separator))
-	ps, err := sourceignore.LoadIgnorePatterns(dir, ignoreDomain)
-	if err != nil {
-		return fmt.Errorf("failed to load source ignore patterns from repository: %w", err)
-	}
-
-	if ignoreDomain != nil {
-		ps = append(ps, sourceignore.ReadPatterns(strings.NewReader(*ignore), ignoreDomain)...)
-	}
-
-	// Archive directory to storage
-	if err := s.Archive(&artifact, dir, SourceIgnoreFilter(ps, ignoreDomain)); err != nil {
-		return fmt.Errorf("unable to archive artifact to storage: %w", err)
-	}
-
-	// Remove the deprecated symlink.
-	// Since we won't create a Symlink this might be not needed.
-	//
-	//symArtifact := artifact.DeepCopy()
-	//symArtifact.Path = filepath.Join(filepath.Dir(symArtifact.Path), "latest.tar.gz")
-	//if fi, err := os.Lstat(s.LocalPath(artifact)); err == nil {
-	//	if fi.Mode()&os.ModeSymlink != 0 {
-	//		if err := os.Remove(r.Storage.LocalPath(*symArtifact)); err != nil {
-	//			r.eventLogf(ctx, obj, eventv1.EventTypeTrace, sourcev1.SymlinkUpdateFailedReason,
-	//				"failed to remove (deprecated) symlink: %s", err)
-	//		}
-	//	}
-	//}
-
-	return nil
+	return archiveFunc(artifact)
 }
 
 // ReconcileStorage will do the following actions:

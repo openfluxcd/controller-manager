@@ -39,4 +39,18 @@ defer unlock()
 done
 ```
 
-TODO: Extract this behaviour might not be possible since it dependent on the source, but let's look into this.
+To make this somewhat more consumable a two method interface has been created called `Storer`.
+
+`Storer` has the following two methods:
+
+```go
+type Storer interface {
+	// ReconcileStorage is responsible for setting up Storage data like URLs.
+	ReconcileStorage(ctx context.Context, obj Collectable, artifact *v1.Artifact) error
+	ReconcileArtifact(ctx context.Context, obj Collectable, revision, dir, hash string, archiveFunc func(v1.Artifact) error) error
+}
+```
+
+`ReconcileStorage` should be called first to garbage collect old artifacts and set up artifact URLs.
+`ReconcileArtifact` should be called next to create artifacts and store actual data. The storage function is there to
+create individual storage preferences for certain artifacts. Such as, specific ways of storing OCI layers or Archives.
