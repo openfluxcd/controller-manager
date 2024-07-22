@@ -25,6 +25,7 @@ import (
 	"io/fs"
 	"net/url"
 	"os"
+	"path"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -39,10 +40,10 @@ import (
 	"github.com/fluxcd/pkg/lockedfile"
 	"github.com/fluxcd/pkg/sourceignore"
 	pkgtar "github.com/fluxcd/pkg/tar"
+	v1 "github.com/openfluxcd/artifact/api/v1alpha1"
 
 	intdigest "github.com/openfluxcd/controller-manager/pkg/digest"
 	sourcefs "github.com/openfluxcd/controller-manager/pkg/fs"
-	v1 "github.com/openfluxcd/controller-manager/v1"
 )
 
 const GarbageCountLimit = 1000
@@ -86,7 +87,7 @@ func (s Storage) ReconcileArtifact(ctx context.Context, obj Collectable, revisio
 	artifact := s.NewArtifactFor(obj.GetKind(), obj.GetObjectMeta(), revision, fmt.Sprintf("%s.tar.gz", hash))
 
 	// The artifact is up-to-date
-	if curArtifact := artifact; curArtifact.HasRevision(artifact.Revision) {
+	if curArtifact := artifact; HasRevision(&curArtifact, artifact.Spec.Revision) {
 		return nil
 	}
 
@@ -153,10 +154,12 @@ func NewStorage(basePath string, hostname string, artifactRetentionTTL time.Dura
 
 // NewArtifactFor returns a new v1.Artifact.
 func (s Storage) NewArtifactFor(kind string, metadata metav1.Object, revision, fileName string) v1.Artifact {
-	path := v1.ArtifactPath(kind, metadata.GetNamespace(), metadata.GetName(), fileName)
+	urlBase := ArtifactURLBase(kind, metadata.GetNamespace(), metadata.GetName(), fileName)
 	artifact := v1.Artifact{
-		Path:     path,
-		Revision: revision,
+		Spec: v1.ArtifactSpec{
+			URL:      urlBase,
+			Revision: revision,
+		},
 	}
 	s.SetArtifactURL(&artifact)
 	return artifact
@@ -164,14 +167,16 @@ func (s Storage) NewArtifactFor(kind string, metadata metav1.Object, revision, f
 
 // SetArtifactURL sets the URL on the given v1.Artifact.
 func (s Storage) SetArtifactURL(artifact *v1.Artifact) {
-	if artifact.Path == "" {
+	if artifact.Spec.URL == "" {
 		return
 	}
 	format := "http://%s/%s"
 	if strings.HasPrefix(s.Hostname, "http://") || strings.HasPrefix(s.Hostname, "https://") {
 		format = "%s/%s"
 	}
-	artifact.URL = fmt.Sprintf(format, s.Hostname, strings.TrimLeft(artifact.Path, "/"))
+
+	// New set the actual URL to the artifact using the URL base.
+	artifact.Spec.URL = fmt.Sprintf(format, s.Hostname, strings.TrimLeft(artifact.Spec.URL, "/"))
 }
 
 // SetHostname sets the hostname of the given URL string to the current Storage.Hostname and returns the result.
@@ -402,13 +407,13 @@ func (s Storage) ArtifactExist(artifact v1.Artifact) bool {
 // of the file in Storage. It returns an error if the digests don't match, or
 // if it can't be verified.
 func (s Storage) VerifyArtifact(artifact v1.Artifact) error {
-	if artifact.Digest == "" {
+	if artifact.Spec.Digest == "" {
 		return fmt.Errorf("artifact has no digest")
 	}
 
-	d, err := digest.Parse(artifact.Digest)
+	d, err := digest.Parse(artifact.Spec.Digest)
 	if err != nil {
-		return fmt.Errorf("failed to parse artifact digest '%s': %w", artifact.Digest, err)
+		return fmt.Errorf("failed to parse artifact digest '%s': %w", artifact.Spec.Digest, err)
 	}
 
 	f, err := os.Open(s.LocalPath(artifact))
@@ -549,9 +554,9 @@ func (s Storage) Archive(artifact *v1.Artifact, dir string, filter ArchiveFileFi
 		return err
 	}
 
-	artifact.Digest = d.Digest().String()
-	artifact.LastUpdateTime = metav1.Now()
-	artifact.Size = &sz.written
+	artifact.Spec.Digest = d.Digest().String()
+	artifact.Spec.LastUpdateTime = metav1.Now()
+	artifact.Spec.Size = &sz.written
 
 	return nil
 }
@@ -591,9 +596,9 @@ func (s Storage) AtomicWriteFile(artifact *v1.Artifact, reader io.Reader, mode o
 		return err
 	}
 
-	artifact.Digest = d.Digest().String()
-	artifact.LastUpdateTime = metav1.Now()
-	artifact.Size = &sz.written
+	artifact.Spec.Digest = d.Digest().String()
+	artifact.Spec.LastUpdateTime = metav1.Now()
+	artifact.Spec.Size = &sz.written
 
 	return nil
 }
@@ -629,9 +634,9 @@ func (s Storage) Copy(artifact *v1.Artifact, reader io.Reader) (err error) {
 		return err
 	}
 
-	artifact.Digest = d.Digest().String()
-	artifact.LastUpdateTime = metav1.Now()
-	artifact.Size = &sz.written
+	artifact.Spec.Digest = d.Digest().String()
+	artifact.Spec.LastUpdateTime = metav1.Now()
+	artifact.Spec.Size = &sz.written
 
 	return nil
 }
@@ -710,7 +715,7 @@ func (s Storage) Symlink(artifact v1.Artifact, linkName string) (string, error) 
 		return "", err
 	}
 
-	return fmt.Sprintf("http://%s/%s", s.Hostname, filepath.Join(filepath.Dir(artifact.Path), linkName)), nil
+	return fmt.Sprintf("http://%s/%s", s.Hostname, filepath.Join(filepath.Dir(s.LocalPathFromURL(artifact)), linkName)), nil
 }
 
 // Lock creates a file lock for the given v1.Artifact.
@@ -720,16 +725,32 @@ func (s Storage) Lock(artifact v1.Artifact) (unlock func(), err error) {
 	return mutex.Lock()
 }
 
+// TODO: Turn the URL into actual PATH.
 // LocalPath returns the secure local path of the given artifact (that is: relative to the Storage.BasePath).
 func (s Storage) LocalPath(artifact v1.Artifact) string {
-	if artifact.Path == "" {
+	if artifact.Spec.URL == "" {
 		return ""
 	}
-	path, err := securejoin.SecureJoin(s.BasePath, artifact.Path)
+
+	path, err := securejoin.SecureJoin(s.BasePath, s.LocalPathFromURL(artifact))
 	if err != nil {
 		return ""
 	}
 	return path
+}
+
+func (s Storage) LocalPathFromURL(artifact v1.Artifact) string {
+	if artifact.Spec.URL == "" {
+		return ""
+	}
+
+	// The URL without the base + hostname.
+	actualFilePath := strings.Trim(artifact.Spec.URL, "http://")
+	actualFilePath = strings.Trim(artifact.Spec.URL, "https://")
+	actualFilePath = strings.Trim(artifact.Spec.URL, s.Hostname)
+	//actualFilePath = strings.Trim(artifact.Spec.URL, s.BasePath) // basepath is not contained in the URL I guess this would be hardcoded during storage creation.
+
+	return actualFilePath
 }
 
 // writeCounter is an implementation of io.Writer that only records the number
@@ -806,4 +827,29 @@ func (s Storage) garbageCollect(ctx context.Context, obj Collectable, artifact *
 	}
 
 	return nil
+}
+
+func HasRevision(artifact *v1.Artifact, revision string) bool {
+	if artifact == nil {
+		return false
+	}
+
+	return artifact.Spec.Revision == revision
+}
+
+// HasDigest returns if the given digest matches the current Digest of the
+// Artifact.
+func HasDigest(in *v1.Artifact, digest string) bool {
+	if in == nil {
+		return false
+	}
+
+	return in.Spec.Digest == digest
+}
+
+// ArtifactURLBase returns the artifact url base path in the form of
+// '<kind>/<namespace>/name>/<filename>'.
+func ArtifactURLBase(kind, namespace, name, filename string) string {
+	kind = strings.ToLower(kind)
+	return path.Join(kind, namespace, name, filename)
 }

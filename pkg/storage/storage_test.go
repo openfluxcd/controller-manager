@@ -33,7 +33,7 @@ import (
 	"github.com/go-git/go-git/v5/plumbing/format/gitignore"
 	. "github.com/onsi/gomega"
 
-	"github.com/openfluxcd/controller-manager/v1"
+	v1 "github.com/openfluxcd/artifact/api/v1alpha1"
 )
 
 func TestStorageConstructor(t *testing.T) {
@@ -289,7 +289,9 @@ func TestStorage_Archive(t *testing.T) {
 			}
 			defer os.RemoveAll(dir)
 			artifact := v1.Artifact{
-				Path: filepath.Join(randStringRunes(10), randStringRunes(10), randStringRunes(10)+".tar.gz"),
+				Spec: v1.ArtifactSpec{
+					URL: "http://hostname/" + filepath.Join(randStringRunes(10), randStringRunes(10), randStringRunes(10)+".tar.gz"),
+				},
 			}
 			if err := storage.MkdirAll(artifact); err != nil {
 				t.Fatalf("artifact directory creation failed: %v", err)
@@ -312,7 +314,9 @@ func TestStorage_Remove(t *testing.T) {
 		g.Expect(err).ToNot(HaveOccurred())
 
 		artifact := v1.Artifact{
-			Path: filepath.Join(dir, "test.txt"),
+			Spec: v1.ArtifactSpec{
+				URL: "http://" + filepath.Join(dir, "test.txt"),
+			},
 		}
 		g.Expect(s.MkdirAll(artifact)).To(Succeed())
 		g.Expect(s.AtomicWriteFile(&artifact, bytes.NewReader([]byte("test")), 0o600)).To(Succeed())
@@ -331,7 +335,9 @@ func TestStorage_Remove(t *testing.T) {
 		g.Expect(err).ToNot(HaveOccurred())
 
 		artifact := v1.Artifact{
-			Path: filepath.Join(dir, "test.txt"),
+			Spec: v1.ArtifactSpec{
+				URL: "http://" + filepath.Join(dir, "test.txt"),
+			},
 		}
 
 		err = s.Remove(artifact)
@@ -349,7 +355,12 @@ func TestStorageRemoveAllButCurrent(t *testing.T) {
 			t.Fatalf("Valid path did not successfully return: %v", err)
 		}
 
-		if _, err := s.RemoveAllButCurrent(v1.Artifact{Path: filepath.Join(dir, "really", "nonexistent")}); err == nil {
+		if _, err := s.RemoveAllButCurrent(v1.Artifact{
+			Spec: v1.ArtifactSpec{
+				URL: "http://" + filepath.Join(dir, "really", "nonexistent"),
+			},
+		},
+		); err == nil {
 			t.Fatal("Did not error while pruning non-existent path")
 		}
 	})
@@ -362,7 +373,9 @@ func TestStorageRemoveAllButCurrent(t *testing.T) {
 		g.Expect(err).ToNot(HaveOccurred(), "failed to create new storage")
 
 		artifact := v1.Artifact{
-			Path: filepath.Join("foo", "bar", "artifact1.tar.gz"),
+			Spec: v1.ArtifactSpec{
+				URL: "http://" + filepath.Join("foo", "bar", "artifact1.tar.gz"),
+			},
 		}
 
 		// Create artifact dir and artifacts.
@@ -423,7 +436,9 @@ func TestStorageRemoveAll(t *testing.T) {
 			g.Expect(err).ToNot(HaveOccurred(), "failed to create new storage")
 
 			artifact := v1.Artifact{
-				Path: tt.artifactPath,
+				Spec: v1.ArtifactSpec{
+					URL: "http://" + tt.artifactPath,
+				},
 			}
 
 			if tt.createArtifactPath {
@@ -516,7 +531,9 @@ func TestStorageCopyFromPath(t *testing.T) {
 				return
 			}
 			artifact := v1.Artifact{
-				Path: filepath.Join(randStringRunes(10), randStringRunes(10), randStringRunes(10)),
+				Spec: v1.ArtifactSpec{
+					URL: "http://" + filepath.Join(randStringRunes(10), randStringRunes(10), randStringRunes(10)),
+				},
 			}
 			if err := storage.MkdirAll(artifact); err != nil {
 				t.Fatalf("artifact directory creation failed: %v", err)
@@ -669,7 +686,9 @@ func TestStorage_getGarbageFiles(t *testing.T) {
 			g.Expect(err).ToNot(HaveOccurred(), "failed to create new storage")
 
 			artifact := v1.Artifact{
-				Path: tt.artifactPaths[len(tt.artifactPaths)-1],
+				Spec: v1.ArtifactSpec{
+					URL: tt.artifactPaths[len(tt.artifactPaths)-1],
+				},
 			}
 			g.Expect(os.MkdirAll(filepath.Join(dir, artifactFolder), 0o750)).ToNot(HaveOccurred())
 			for _, artifactPath := range tt.artifactPaths {
@@ -752,7 +771,9 @@ func TestStorage_GarbageCollect(t *testing.T) {
 			g.Expect(err).ToNot(HaveOccurred(), "failed to create new storage")
 
 			artifact := v1.Artifact{
-				Path: tt.artifactPaths[len(tt.artifactPaths)-1],
+				Spec: v1.ArtifactSpec{
+					URL: tt.artifactPaths[len(tt.artifactPaths)-1],
+				},
 			}
 			g.Expect(os.MkdirAll(filepath.Join(dir, artifactFolder), 0o750)).ToNot(HaveOccurred())
 			for i, artifactPath := range tt.artifactPaths {
@@ -814,7 +835,13 @@ func TestStorage_VerifyArtifact(t *testing.T) {
 	t.Run("artifact with invalid digest", func(t *testing.T) {
 		g := NewWithT(t)
 
-		err := s.VerifyArtifact(v1.Artifact{Digest: "invalid"})
+		err := s.VerifyArtifact(
+			v1.Artifact{
+				Spec: v1.ArtifactSpec{
+					Digest: "invalid",
+				},
+			},
+		)
 		g.Expect(err).To(HaveOccurred())
 		g.Expect(err).To(MatchError("failed to parse artifact digest 'invalid': invalid checksum digest format"))
 	})
@@ -823,8 +850,10 @@ func TestStorage_VerifyArtifact(t *testing.T) {
 		g := NewWithT(t)
 
 		err := s.VerifyArtifact(v1.Artifact{
-			Digest: "sha256:9ba7a35ce8acd3557fe30680ef193ca7a36bb5dc62788f30de7122a0a5beab69",
-			Path:   "invalid",
+			Spec: v1.ArtifactSpec{
+				Digest: "sha256:9ba7a35ce8acd3557fe30680ef193ca7a36bb5dc62788f30de7122a0a5beab69",
+				URL:    "invalid",
+			},
 		})
 		g.Expect(err).To(HaveOccurred())
 		g.Expect(errors.Is(err, os.ErrNotExist)).To(BeTrue())
@@ -834,8 +863,10 @@ func TestStorage_VerifyArtifact(t *testing.T) {
 		g := NewWithT(t)
 
 		err := s.VerifyArtifact(v1.Artifact{
-			Digest: "sha256:9ba7a35ce8acd3557fe30680ef193ca7a36bb5dc62788f30de7122a0a5beab69",
-			Path:   "artifact",
+			Spec: v1.ArtifactSpec{
+				Digest: "sha256:9ba7a35ce8acd3557fe30680ef193ca7a36bb5dc62788f30de7122a0a5beab69",
+				URL:    "http://artifact",
+			},
 		})
 		g.Expect(err).To(HaveOccurred())
 		g.Expect(err).To(MatchError("computed digest doesn't match 'sha256:9ba7a35ce8acd3557fe30680ef193ca7a36bb5dc62788f30de7122a0a5beab69'"))
@@ -845,8 +876,10 @@ func TestStorage_VerifyArtifact(t *testing.T) {
 		g := NewWithT(t)
 
 		err := s.VerifyArtifact(v1.Artifact{
-			Digest: "sha256:9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
-			Path:   "artifact",
+			Spec: v1.ArtifactSpec{
+				URL:    "http://artifact",
+				Digest: "sha256:9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
+			},
 		})
 		g.Expect(err).ToNot(HaveOccurred())
 	})
