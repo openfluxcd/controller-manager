@@ -54,3 +54,7 @@ type Storer interface {
 `ReconcileStorage` should be called first to garbage collect old artifacts and set up artifact URLs.
 `ReconcileArtifact` should be called next to create artifacts and store actual data. The storage function is there to
 create individual storage preferences for certain artifacts. Such as, specific ways of storing OCI layers or Archives.
+
+## TODO
+
+Artifact should be used from https://github.com/openfluxcd/artifact/blob/main/api/v1alpha1/artifact_types.go.
