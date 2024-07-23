@@ -4,7 +4,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/openfluxcd/controller-manager/pkg/storage"
+	"github.com/openfluxcd/controller-manager/storage"
 )
 
 // InitServer starts a file server to serve artifacts.

@@ -32,18 +32,17 @@ import (
 	"time"
 
 	securejoin "github.com/cyphar/filepath-securejoin"
+	"github.com/fluxcd/pkg/lockedfile"
+	"github.com/fluxcd/pkg/sourceignore"
+	pkgtar "github.com/fluxcd/pkg/tar"
 	"github.com/go-git/go-git/v5/plumbing/format/gitignore"
 	"github.com/opencontainers/go-digest"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	kerrors "k8s.io/apimachinery/pkg/util/errors"
 
-	"github.com/fluxcd/pkg/lockedfile"
-	"github.com/fluxcd/pkg/sourceignore"
-	pkgtar "github.com/fluxcd/pkg/tar"
 	v1 "github.com/openfluxcd/artifact/api/v1alpha1"
-
-	intdigest "github.com/openfluxcd/controller-manager/pkg/digest"
-	sourcefs "github.com/openfluxcd/controller-manager/pkg/fs"
+	intdigest "github.com/openfluxcd/controller-manager/digest"
+	sourcefs "github.com/openfluxcd/controller-manager/fs"
 )
 
 const GarbageCountLimit = 1000
@@ -725,7 +724,6 @@ func (s Storage) Lock(artifact v1.Artifact) (unlock func(), err error) {
 	return mutex.Lock()
 }
 
-// TODO: Turn the URL into actual PATH.
 // LocalPath returns the secure local path of the given artifact (that is: relative to the Storage.BasePath).
 func (s Storage) LocalPath(artifact v1.Artifact) string {
 	if artifact.Spec.URL == "" {
@@ -739,16 +737,17 @@ func (s Storage) LocalPath(artifact v1.Artifact) string {
 	return path
 }
 
+// LocalPathFromURL returns the local path on the file-system given the URL of the artifact.
 func (s Storage) LocalPathFromURL(artifact v1.Artifact) string {
 	if artifact.Spec.URL == "" {
 		return ""
 	}
 
-	// The URL without the base + hostname.
-	actualFilePath := strings.Trim(artifact.Spec.URL, "http://")
-	actualFilePath = strings.Trim(artifact.Spec.URL, "https://")
-	actualFilePath = strings.Trim(artifact.Spec.URL, s.Hostname)
-	//actualFilePath = strings.Trim(artifact.Spec.URL, s.BasePath) // basepath is not contained in the URL I guess this would be hardcoded during storage creation.
+	// The URL without the hostname should end up using the right path on the filesystem.
+	// We only trim at the beginning!
+	actualFilePath := strings.TrimPrefix(artifact.Spec.URL, "http://")
+	actualFilePath = strings.TrimPrefix(actualFilePath, "https://")
+	actualFilePath = strings.TrimPrefix(actualFilePath, s.Hostname)
 
 	return actualFilePath
 }

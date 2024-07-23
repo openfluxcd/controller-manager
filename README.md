@@ -4,10 +4,10 @@ Contains resources for managing controllers and artifacts.
 
 ## Usage
 
-Currently, the function `InitServer` can be found under pkg/server/server.go. Starting this server with
+Currently, the function `InitServer` can be found under server/server.go. Starting this server with
 the correct values will initialize a file server that can be further used to serve content.
 
-The `pkg/storage` internals expose a storage service that can handle `Artifact` based behaviour such as
+The `storage` internals expose a storage service that can handle `Artifact` based behaviour such as
 - storing
 - garbage collection
 - storage locks
@@ -54,7 +54,3 @@ type Storer interface {
 `ReconcileStorage` should be called first to garbage collect old artifacts and set up artifact URLs.
 `ReconcileArtifact` should be called next to create artifacts and store actual data. The storage function is there to
 create individual storage preferences for certain artifacts. Such as, specific ways of storing OCI layers or Archives.
-
-## TODO
-
-Artifact should be used from https://github.com/openfluxcd/artifact/blob/main/api/v1alpha1/artifact_types.go.
