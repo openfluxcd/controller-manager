@@ -59,7 +59,7 @@ const (
 type Storer interface {
 	// ReconcileStorage is responsible for setting up Storage data like URLs.
 	ReconcileStorage(ctx context.Context, obj Collectable, artifact *v1.Artifact) error
-	ReconcileArtifact(ctx context.Context, obj Collectable, revision, dir, hash string, archiveFunc func(v1.Artifact) error) error
+	ReconcileArtifact(ctx context.Context, obj Collectable, revision, dir, hash string, archiveFunc func(v1.Artifact, string) error) error
 }
 
 var _ Storer = &Storage{}
@@ -81,7 +81,7 @@ type Storage struct {
 	ArtifactRetentionRecords int `json:"artifactRetentionRecords"`
 }
 
-func (s Storage) ReconcileArtifact(ctx context.Context, obj Collectable, revision, dir, hash string, archiveFunc func(v1.Artifact) error) error {
+func (s Storage) ReconcileArtifact(ctx context.Context, obj Collectable, revision, dir, hash string, archiveFunc func(v1.Artifact, string) error) error {
 	// Create potential new artifact with current available metadata
 	artifact := s.NewArtifactFor(obj.GetKind(), obj.GetObjectMeta(), revision, fmt.Sprintf("%s.tar.gz", hash))
 
@@ -108,7 +108,7 @@ func (s Storage) ReconcileArtifact(ctx context.Context, obj Collectable, revisio
 	}
 	defer unlock()
 
-	return archiveFunc(artifact)
+	return archiveFunc(artifact, dir)
 }
 
 // ReconcileStorage will do the following actions:
@@ -121,14 +121,16 @@ func (s Storage) ReconcileStorage(ctx context.Context, obj Collectable, artifact
 		return fmt.Errorf("could not garbage collect artifact: %w", err)
 	}
 
-	if artifact != nil {
-		// If the artifact is in storage, verify if the advertised digest still
-		// matches the actual artifact
-		if s.ArtifactExist(*artifact) {
-			if err := s.VerifyArtifact(*artifact); err != nil {
-				if err = s.Remove(*artifact); err != nil {
-					return fmt.Errorf("failed to remove artifact after digest mismatch: %w", err)
-				}
+	if artifact == nil {
+		return nil
+	}
+
+	// If the artifact is in storage, verify if the advertised digest still
+	// matches the actual artifact
+	if s.ArtifactExist(*artifact) {
+		if err := s.VerifyArtifact(*artifact); err != nil {
+			if err = s.Remove(*artifact); err != nil {
+				return fmt.Errorf("failed to remove artifact after digest mismatch: %w", err)
 			}
 		}
 	}

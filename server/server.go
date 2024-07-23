@@ -1,20 +1,23 @@
 package server
 
 import (
+	"fmt"
 	"net/http"
 	"time"
 
 	"github.com/openfluxcd/controller-manager/storage"
 )
 
-// InitServer starts a file server to serve artifacts.
-func InitServer(path, storageAddress string, artifactRetentionTTL time.Duration, artifactRetentionRecords int) error {
+type StartServer func(path, address string) error
+
+// InitializeStorage creates a storage and returns the means to launch a file server to serve created Artifacts.
+func InitializeStorage(path, storageAddress string, artifactRetentionTTL time.Duration, artifactRetentionRecords int) (StartServer, *storage.Storage, error) {
 	stg, err := storage.NewStorage(path, storageAddress, artifactRetentionTTL, artifactRetentionRecords)
 	if err != nil {
-		return err
+		return nil, nil, fmt.Errorf("error initializing storage: %v", err)
 	}
 
-	return startFileServer(stg.BasePath, storageAddress)
+	return startFileServer, stg, nil
 }
 
 func startFileServer(path string, address string) error {
