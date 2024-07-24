@@ -59,7 +59,7 @@ const (
 type Storer interface {
 	// ReconcileStorage is responsible for setting up Storage data like URLs.
 	ReconcileStorage(ctx context.Context, obj Collectable, artifact *v1.Artifact) error
-	ReconcileArtifact(ctx context.Context, obj Collectable, revision, dir, hash string, archiveFunc func(v1.Artifact, string) error) error
+	ReconcileArtifact(ctx context.Context, obj Collectable, curArtifact *v1.Artifact, revision, dir, hash string, archiveFunc func(*v1.Artifact, string) error) error
 }
 
 var _ Storer = &Storage{}
@@ -81,14 +81,15 @@ type Storage struct {
 	ArtifactRetentionRecords int `json:"artifactRetentionRecords"`
 }
 
-func (s Storage) ReconcileArtifact(ctx context.Context, obj Collectable, revision, dir, hash string, archiveFunc func(v1.Artifact, string) error) error {
+func (s Storage) ReconcileArtifact(ctx context.Context, obj Collectable, artifact *v1.Artifact, revision, dir, filename string, archiveFunc func(*v1.Artifact, string) error) error {
+	// We don't need to check this here...
 	// Create potential new artifact with current available metadata
-	artifact := s.NewArtifactFor(obj.GetKind(), obj.GetObjectMeta(), revision, fmt.Sprintf("%s.tar.gz", hash))
+	//artifact := s.NewArtifactFor(obj.GetKind(), obj.GetObjectMeta(), revision, filename)
 
 	// The artifact is up-to-date
-	if curArtifact := artifact; HasRevision(&curArtifact, artifact.Spec.Revision) {
-		return nil
-	}
+	//if HasRevision(curArtifact, artifact.Spec.Revision) {
+	//	return nil
+	//}
 
 	// Ensure target path exists and is a directory
 	if f, err := os.Stat(dir); err != nil {
@@ -98,11 +99,11 @@ func (s Storage) ReconcileArtifact(ctx context.Context, obj Collectable, revisio
 	}
 
 	// Ensure artifact directory exists and acquire lock
-	if err := s.MkdirAll(artifact); err != nil {
+	if err := s.MkdirAll(*artifact); err != nil {
 		return fmt.Errorf("failed to create artifact directory: %w", err)
 	}
 
-	unlock, err := s.Lock(artifact)
+	unlock, err := s.Lock(*artifact)
 	if err != nil {
 		return fmt.Errorf("failed to acquire lock for artifact: %w", err)
 	}
@@ -157,27 +158,35 @@ func NewStorage(basePath string, hostname string, artifactRetentionTTL time.Dura
 func (s Storage) NewArtifactFor(kind string, metadata metav1.Object, revision, fileName string) v1.Artifact {
 	urlBase := ArtifactURLBase(kind, metadata.GetNamespace(), metadata.GetName(), fileName)
 	artifact := v1.Artifact{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      metadata.GetName(),
+			Namespace: metadata.GetNamespace(),
+		},
 		Spec: v1.ArtifactSpec{
 			URL:      urlBase,
 			Revision: revision,
 		},
 	}
+
 	s.SetArtifactURL(&artifact)
 	return artifact
 }
 
 // SetArtifactURL sets the URL on the given v1.Artifact.
+// URL needs to include the location of the file.
 func (s Storage) SetArtifactURL(artifact *v1.Artifact) {
 	if artifact.Spec.URL == "" {
 		return
 	}
+
 	format := "http://%s/%s"
 	if strings.HasPrefix(s.Hostname, "http://") || strings.HasPrefix(s.Hostname, "https://") {
 		format = "%s/%s"
 	}
 
 	// New set the actual URL to the artifact using the URL base.
-	artifact.Spec.URL = fmt.Sprintf(format, s.Hostname, strings.TrimLeft(artifact.Spec.URL, "/"))
+	basePath := s.LocalPathFromURL(*artifact)
+	artifact.Spec.URL = fmt.Sprintf(format, s.Hostname, strings.TrimLeft(basePath, "/"))
 }
 
 // SetHostname sets the hostname of the given URL string to the current Storage.Hostname and returns the result.
@@ -248,15 +257,26 @@ func (s Storage) RemoveAllButCurrent(artifact v1.Artifact) ([]string, error) {
 // 2. if we satisfy maxItemsToBeRetained, then return
 // 3. else, collect all artifact files till the latest n files remain, where n=maxItemsToBeRetained
 func (s Storage) getGarbageFiles(artifact v1.Artifact, totalCountLimit, maxItemsToBeRetained int, ttl time.Duration) (garbageFiles []string, _ error) {
+	// This won't really work since the URL should include the artifact name, but it doesn't.../
+	// Which means this whole section should just be skipped if the URL is not yet set...
 	localPath := s.LocalPath(artifact)
+	if localPath == "" {
+		// TODO: Think of a better way, or make sure that it doesn't get to this point if artifact is nil.
+		return nil, nil
+	}
+
 	dir := filepath.Dir(localPath)
+	if _, err := os.Stat(dir); err != nil && os.IsNotExist(err) {
+		return nil, nil
+	}
+
 	artifactFilesWithCreatedTs := make(map[time.Time]string)
 	// sortedPaths contain all files sorted according to their created ts.
-	sortedPaths := []string{}
+	var sortedPaths []string
 	now := time.Now().UTC()
 	totalArtifactFiles := 0
 	var errors []string
-	creationTimestamps := []time.Time{}
+	var creationTimestamps []time.Time
 	_ = filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			errors = append(errors, err.Error())
@@ -728,6 +748,9 @@ func (s Storage) Lock(artifact v1.Artifact) (unlock func(), err error) {
 
 // LocalPath returns the secure local path of the given artifact (that is: relative to the Storage.BasePath).
 func (s Storage) LocalPath(artifact v1.Artifact) string {
+	// TODO: This was artifact.Path and Path is REQUIRED so this was never empty
+	// For use, this is causing a problem right now.
+	// This is problematic, because... if the below path is just `/data` it returns `/` after calling dir := filepath.Dir(localPath).
 	if artifact.Spec.URL == "" {
 		return ""
 	}
@@ -736,14 +759,16 @@ func (s Storage) LocalPath(artifact v1.Artifact) string {
 	if err != nil {
 		return ""
 	}
+
 	return path
 }
 
 // LocalPathFromURL returns the local path on the file-system given the URL of the artifact.
 func (s Storage) LocalPathFromURL(artifact v1.Artifact) string {
-	if artifact.Spec.URL == "" {
-		return ""
-	}
+	//url := artifact.Spec.URL
+	//if url == "" {
+	//	url = artifact.Namespace + "/" + artifact.Name
+	//}
 
 	// The URL without the hostname should end up using the right path on the filesystem.
 	// We only trim at the beginning!
