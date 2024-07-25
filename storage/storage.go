@@ -257,11 +257,8 @@ func (s Storage) RemoveAllButCurrent(artifact v1.Artifact) ([]string, error) {
 // 2. if we satisfy maxItemsToBeRetained, then return
 // 3. else, collect all artifact files till the latest n files remain, where n=maxItemsToBeRetained
 func (s Storage) getGarbageFiles(artifact v1.Artifact, totalCountLimit, maxItemsToBeRetained int, ttl time.Duration) (garbageFiles []string, _ error) {
-	// This won't really work since the URL should include the artifact name, but it doesn't.../
-	// Which means this whole section should just be skipped if the URL is not yet set...
 	localPath := s.LocalPath(artifact)
 	if localPath == "" {
-		// TODO: Think of a better way, or make sure that it doesn't get to this point if artifact is nil.
 		return nil, nil
 	}
 
@@ -748,9 +745,6 @@ func (s Storage) Lock(artifact v1.Artifact) (unlock func(), err error) {
 
 // LocalPath returns the secure local path of the given artifact (that is: relative to the Storage.BasePath).
 func (s Storage) LocalPath(artifact v1.Artifact) string {
-	// TODO: This was artifact.Path and Path is REQUIRED so this was never empty
-	// For use, this is causing a problem right now.
-	// This is problematic, because... if the below path is just `/data` it returns `/` after calling dir := filepath.Dir(localPath).
 	if artifact.Spec.URL == "" {
 		return ""
 	}
@@ -765,11 +759,6 @@ func (s Storage) LocalPath(artifact v1.Artifact) string {
 
 // LocalPathFromURL returns the local path on the file-system given the URL of the artifact.
 func (s Storage) LocalPathFromURL(artifact v1.Artifact) string {
-	//url := artifact.Spec.URL
-	//if url == "" {
-	//	url = artifact.Namespace + "/" + artifact.Name
-	//}
-
 	// The URL without the hostname should end up using the right path on the filesystem.
 	// We only trim at the beginning!
 	actualFilePath := strings.TrimPrefix(artifact.Spec.URL, "http://")
