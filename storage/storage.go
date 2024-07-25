@@ -81,15 +81,19 @@ type Storage struct {
 	ArtifactRetentionRecords int `json:"artifactRetentionRecords"`
 }
 
-func (s Storage) ReconcileArtifact(ctx context.Context, obj Collectable, artifact *v1.Artifact, revision, dir, filename string, archiveFunc func(*v1.Artifact, string) error) error {
+func (s Storage) ReconcileArtifact(ctx context.Context, obj Collectable, curArtifact *v1.Artifact, revision, dir, filename string, archiveFunc func(*v1.Artifact, string) error) error {
 	// We don't need to check this here...
 	// Create potential new artifact with current available metadata
-	//artifact := s.NewArtifactFor(obj.GetKind(), obj.GetObjectMeta(), revision, filename)
+	artifact := s.NewArtifactFor(obj.GetKind(), obj.GetObjectMeta(), revision, filename)
 
 	// The artifact is up-to-date
-	//if HasRevision(curArtifact, artifact.Spec.Revision) {
-	//	return nil
-	//}
+	// Since digest is set by the end of reconiling an artifact,
+	// we'll know if the artifact was created anew or if it already existed.
+	if  HasDigest(curArtifact, artifact.Spec.Digest) {
+		return nil
+	}
+
+	curArtifact = artifact.DeepCopy()
 
 	// Ensure target path exists and is a directory
 	if f, err := os.Stat(dir); err != nil {
@@ -99,17 +103,17 @@ func (s Storage) ReconcileArtifact(ctx context.Context, obj Collectable, artifac
 	}
 
 	// Ensure artifact directory exists and acquire lock
-	if err := s.MkdirAll(*artifact); err != nil {
+	if err := s.MkdirAll(*curArtifact); err != nil {
 		return fmt.Errorf("failed to create artifact directory: %w", err)
 	}
 
-	unlock, err := s.Lock(*artifact)
+	unlock, err := s.Lock(*curArtifact)
 	if err != nil {
 		return fmt.Errorf("failed to acquire lock for artifact: %w", err)
 	}
 	defer unlock()
 
-	return archiveFunc(artifact, dir)
+	return archiveFunc(curArtifact, dir)
 }
 
 // ReconcileStorage will do the following actions:
@@ -163,8 +167,9 @@ func (s Storage) NewArtifactFor(kind string, metadata metav1.Object, revision, f
 			Namespace: metadata.GetNamespace(),
 		},
 		Spec: v1.ArtifactSpec{
-			URL:      urlBase,
-			Revision: revision,
+			URL:            urlBase,
+			Revision:       revision,
+			LastUpdateTime: metav1.Now(),
 		},
 	}
 
@@ -855,7 +860,7 @@ func HasRevision(artifact *v1.Artifact, revision string) bool {
 // HasDigest returns if the given digest matches the current Digest of the
 // Artifact.
 func HasDigest(in *v1.Artifact, digest string) bool {
-	if in == nil {
+	if in == nil || in.Spec.Digest == "" {
 		return false
 	}
 
