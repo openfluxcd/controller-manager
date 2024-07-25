@@ -38,7 +38,10 @@ import (
 	"github.com/go-git/go-git/v5/plumbing/format/gitignore"
 	"github.com/opencontainers/go-digest"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 	kerrors "k8s.io/apimachinery/pkg/util/errors"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
 	v1 "github.com/openfluxcd/artifact/api/v1alpha1"
 	intdigest "github.com/openfluxcd/controller-manager/digest"
@@ -58,8 +61,8 @@ const (
 
 type Storer interface {
 	// ReconcileStorage is responsible for setting up Storage data like URLs.
-	ReconcileStorage(ctx context.Context, obj Collectable, artifact *v1.Artifact) error
-	ReconcileArtifact(ctx context.Context, obj Collectable, curArtifact *v1.Artifact, revision, dir, hash string, archiveFunc func(*v1.Artifact, string) error) error
+	ReconcileStorage(ctx context.Context, obj Collectable) error
+	ReconcileArtifact(ctx context.Context, obj Collectable, revision, dir, hash string, archiveFunc func(*v1.Artifact, string) error) error
 }
 
 var _ Storer = &Storage{}
@@ -79,17 +82,27 @@ type Storage struct {
 	// ArtifactRetentionRecords is the maximum number of artifacts to be kept in
 	// storage after a garbage collection.
 	ArtifactRetentionRecords int `json:"artifactRetentionRecords"`
+
+	// kclient defines the Kubernetes kclient to find artifacts with.
+	kclient client.Client
+	// scheme contains the Kubernetes scheme to create objects for.
+	scheme *runtime.Scheme
 }
 
-func (s Storage) ReconcileArtifact(ctx context.Context, obj Collectable, curArtifact *v1.Artifact, revision, dir, filename string, archiveFunc func(*v1.Artifact, string) error) error {
+func (s Storage) ReconcileArtifact(ctx context.Context, obj Collectable, revision, dir, filename string, archiveFunc func(*v1.Artifact, string) error) error {
+	curArtifact, err := s.findArtifact(ctx, obj)
+	if err != nil {
+		return fmt.Errorf("failed to find artifact: %w", err)
+	}
+
 	// We don't need to check this here...
 	// Create potential new artifact with current available metadata
 	artifact := s.NewArtifactFor(obj.GetKind(), obj.GetObjectMeta(), revision, filename)
 
 	// The artifact is up-to-date
-	// Since digest is set by the end of reconiling an artifact,
+	// Since digest is set by the end of reconciling an artifact,
 	// we'll know if the artifact was created anew or if it already existed.
-	if  HasDigest(curArtifact, artifact.Spec.Digest) {
+	if HasDigest(curArtifact, artifact.Spec.Digest) {
 		return nil
 	}
 
@@ -113,14 +126,43 @@ func (s Storage) ReconcileArtifact(ctx context.Context, obj Collectable, curArti
 	}
 	defer unlock()
 
-	return archiveFunc(curArtifact, dir)
+	if err := archiveFunc(curArtifact, dir); err != nil {
+		return fmt.Errorf("failed to archive artifact: %w", err)
+	}
+
+	createArtifact := curArtifact.DeepCopy()
+	if _, err = controllerutil.CreateOrUpdate(ctx, s.kclient, createArtifact, func() error {
+		if artifact.ObjectMeta.CreationTimestamp.IsZero() {
+			if err := controllerutil.SetOwnerReference(obj, &artifact, s.scheme); err != nil {
+				return fmt.Errorf("failed to set owner reference: %w", err)
+			}
+		}
+
+		// mutate the existing object with the outside object.
+		createArtifact.Spec.Revision = curArtifact.Spec.Revision
+		createArtifact.Spec.Digest = curArtifact.Spec.Digest
+		createArtifact.Spec.URL = curArtifact.Spec.URL
+		createArtifact.Spec.LastUpdateTime = curArtifact.Spec.LastUpdateTime
+		createArtifact.Spec.Size = curArtifact.Spec.Size
+
+		return nil
+	}); err != nil {
+		return fmt.Errorf("failed to create/update artifact: %w", err)
+	}
+
+	return nil
 }
 
 // ReconcileStorage will do the following actions:
 // - garbage collect old files
 // - verify digest if the artifact does exist ( remove it if the digest doesn't match )
 // - set the url of the artifact.
-func (s Storage) ReconcileStorage(ctx context.Context, obj Collectable, artifact *v1.Artifact) error {
+func (s Storage) ReconcileStorage(ctx context.Context, obj Collectable) error {
+	artifact, err := s.findArtifact(ctx, obj)
+	if err != nil {
+		return fmt.Errorf("failed to find artifact: %w", err)
+	}
+
 	// Garbage collect previous advertised artifact(s) from storage
 	if err := s.garbageCollect(ctx, obj, artifact); err != nil {
 		return fmt.Errorf("could not garbage collect artifact: %w", err)
@@ -146,15 +188,18 @@ func (s Storage) ReconcileStorage(ctx context.Context, obj Collectable, artifact
 }
 
 // NewStorage creates the storage helper for a given path and hostname.
-func NewStorage(basePath string, hostname string, artifactRetentionTTL time.Duration, artifactRetentionRecords int) (*Storage, error) {
+func NewStorage(client client.Client, scheme *runtime.Scheme, basePath string, hostname string, artifactRetentionTTL time.Duration, artifactRetentionRecords int) (*Storage, error) {
 	if f, err := os.Stat(basePath); os.IsNotExist(err) || !f.IsDir() {
 		return nil, fmt.Errorf("invalid dir path: %s", basePath)
 	}
+
 	return &Storage{
 		BasePath:                 basePath,
 		Hostname:                 hostname,
 		ArtifactRetentionTTL:     artifactRetentionTTL,
 		ArtifactRetentionRecords: artifactRetentionRecords,
+		kclient:                  client,
+		scheme:                   scheme,
 	}, nil
 }
 
@@ -773,6 +818,30 @@ func (s Storage) LocalPathFromURL(artifact v1.Artifact) string {
 	return actualFilePath
 }
 
+// this should most likely be extracted into the controller-manager
+func (s Storage) findArtifact(ctx context.Context, object client.Object) (*v1.Artifact, error) {
+	// this should look through ALL the artifacts and look if the owner is THIS object.
+	list := &v1.ArtifactList{}
+	if err := s.kclient.List(ctx, list, client.InNamespace(object.GetNamespace())); err != nil {
+		return nil, fmt.Errorf("failed to list artifacts: %w", err)
+	}
+
+	for _, artifact := range list.Items {
+		if len(artifact.GetOwnerReferences()) != 1 {
+			// ignore artifacts with multiple owners -> this should throw an error?
+			continue
+		}
+
+		for _, owner := range artifact.OwnerReferences {
+			if owner.Name == object.GetName() {
+				return &artifact, nil
+			}
+		}
+	}
+
+	return nil, nil
+}
+
 // writeCounter is an implementation of io.Writer that only records the number
 // of bytes written.
 type writeCounter struct {
@@ -825,6 +894,8 @@ func setDefaultMode(h *tar.Header) {
 }
 
 type Collectable interface {
+	client.Object
+
 	GetDeletionTimestamp() *metav1.Time
 	GetObjectMeta() *metav1.ObjectMeta
 	GetKind() string
