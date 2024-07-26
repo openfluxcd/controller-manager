@@ -208,6 +208,7 @@ func (s Storage) NewArtifactFor(kind string, metadata metav1.Object, revision, f
 	urlBase := ArtifactURLBase(kind, metadata.GetNamespace(), metadata.GetName(), fileName)
 	artifact := v1.Artifact{
 		ObjectMeta: metav1.ObjectMeta{
+			// TODO: This needs to be generated so the object can save the name in status.
 			Name:      metadata.GetName(),
 			Namespace: metadata.GetNamespace(),
 		},
