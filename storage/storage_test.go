@@ -39,7 +39,7 @@ import (
 func TestStorageConstructor(t *testing.T) {
 	dir := t.TempDir()
 
-	if _, err := NewStorage("/nonexistent", "hostname", time.Minute, 2); err == nil {
+	if _, err := NewStorage(nil, nil, "/nonexistent", "hostname", time.Minute, 2); err == nil {
 		t.Fatal("nonexistent path was allowable in storage constructor")
 	}
 
@@ -49,13 +49,13 @@ func TestStorageConstructor(t *testing.T) {
 	}
 	f.Close()
 
-	if _, err := NewStorage(f.Name(), "hostname", time.Minute, 2); err == nil {
+	if _, err := NewStorage(nil, nil, f.Name(), "hostname", time.Minute, 2); err == nil {
 		os.Remove(f.Name())
 		t.Fatal("file path was accepted as basedir")
 	}
 	os.Remove(f.Name())
 
-	if _, err := NewStorage(dir, "hostname", time.Minute, 2); err != nil {
+	if _, err := NewStorage(nil, nil, dir, "hostname", time.Minute, 2); err != nil {
 		t.Fatalf("Valid path did not successfully return: %v", err)
 	}
 }
@@ -104,7 +104,7 @@ func walkTar(tarFile string, match string, dir bool) (int64, int64, bool, error)
 func TestStorage_Archive(t *testing.T) {
 	dir := t.TempDir()
 
-	storage, err := NewStorage(dir, "hostname", time.Minute, 2)
+	storage, err := NewStorage(nil, nil, dir, "hostname", time.Minute, 2)
 	if err != nil {
 		t.Fatalf("error while bootstrapping storage: %v", err)
 	}
@@ -310,7 +310,7 @@ func TestStorage_Remove(t *testing.T) {
 
 		dir := t.TempDir()
 
-		s, err := NewStorage(dir, "", 0, 0)
+		s, err := NewStorage(nil, nil, dir, "", 0, 0)
 		g.Expect(err).ToNot(HaveOccurred())
 
 		artifact := v1.Artifact{
@@ -331,7 +331,7 @@ func TestStorage_Remove(t *testing.T) {
 
 		dir := t.TempDir()
 
-		s, err := NewStorage(dir, "", 0, 0)
+		s, err := NewStorage(nil, nil, dir, "", 0, 0)
 		g.Expect(err).ToNot(HaveOccurred())
 
 		artifact := v1.Artifact{
@@ -350,7 +350,7 @@ func TestStorageRemoveAllButCurrent(t *testing.T) {
 	t.Run("bad directory in archive", func(t *testing.T) {
 		dir := t.TempDir()
 
-		s, err := NewStorage(dir, "hostname", time.Minute, 2)
+		s, err := NewStorage(nil, nil, dir, "hostname", time.Minute, 2)
 		if err != nil {
 			t.Fatalf("Valid path did not successfully return: %v", err)
 		}
@@ -369,7 +369,7 @@ func TestStorageRemoveAllButCurrent(t *testing.T) {
 		g := NewWithT(t)
 		dir := t.TempDir()
 
-		s, err := NewStorage(dir, "hostname", time.Minute, 2)
+		s, err := NewStorage(nil, nil, dir, "hostname", time.Minute, 2)
 		g.Expect(err).ToNot(HaveOccurred(), "failed to create new storage")
 
 		artifact := v1.Artifact{
@@ -432,7 +432,7 @@ func TestStorageRemoveAll(t *testing.T) {
 			g := NewWithT(t)
 			dir := t.TempDir()
 
-			s, err := NewStorage(dir, "hostname", time.Minute, 2)
+			s, err := NewStorage(nil, nil, dir, "hostname", time.Minute, 2)
 			g.Expect(err).ToNot(HaveOccurred(), "failed to create new storage")
 
 			artifact := v1.Artifact{
@@ -460,7 +460,7 @@ func TestStorageCopyFromPath(t *testing.T) {
 
 	dir := t.TempDir()
 
-	storage, err := NewStorage(dir, "hostname", time.Minute, 2)
+	storage, err := NewStorage(nil, nil, dir, "hostname", time.Minute, 2)
 	if err != nil {
 		t.Fatalf("error while bootstrapping storage: %v", err)
 	}
@@ -682,7 +682,7 @@ func TestStorage_getGarbageFiles(t *testing.T) {
 			g := NewWithT(t)
 			dir := t.TempDir()
 
-			s, err := NewStorage(dir, "hostname", tt.ttl, tt.maxItemsToBeRetained)
+			s, err := NewStorage(nil, nil, dir, "hostname", tt.ttl, tt.maxItemsToBeRetained)
 			g.Expect(err).ToNot(HaveOccurred(), "failed to create new storage")
 
 			artifact := v1.Artifact{
@@ -767,7 +767,7 @@ func TestStorage_GarbageCollect(t *testing.T) {
 			g := NewWithT(t)
 			dir := t.TempDir()
 
-			s, err := NewStorage(dir, "hostname", time.Second*2, 2)
+			s, err := NewStorage(nil, nil, dir, "hostname", time.Second*2, 2)
 			g.Expect(err).ToNot(HaveOccurred(), "failed to create new storage")
 
 			artifact := v1.Artifact{
@@ -819,7 +819,7 @@ func TestStorage_VerifyArtifact(t *testing.T) {
 	g := NewWithT(t)
 
 	dir := t.TempDir()
-	s, err := NewStorage(dir, "", 0, 0)
+	s, err := NewStorage(nil, nil, dir, "", 0, 0)
 	g.Expect(err).ToNot(HaveOccurred(), "failed to create new storage")
 
 	g.Expect(os.WriteFile(filepath.Join(dir, "artifact"), []byte("test"), 0o600)).To(Succeed())

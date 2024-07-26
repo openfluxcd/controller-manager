@@ -43,7 +43,7 @@ var testServer *testserver.ArtifactServer
 
 func TestMain(m *testing.M) {
 	var err error
-	// Initialize a cacheless client for tests that need the latest objects.
+	// Initialize a cacheless kclient for tests that need the latest objects.
 
 	testServer, err = testserver.NewTempArtifactServer()
 	if err != nil {
@@ -72,14 +72,6 @@ func TestMain(m *testing.M) {
 	}
 
 	os.Exit(code)
-}
-
-func newTestStorage(s *testserver.HTTPServer) (*Storage, error) {
-	storage, err := NewStorage(s.Root(), s.URL(), retentionTTL, retentionRecords)
-	if err != nil {
-		return nil, err
-	}
-	return storage, nil
 }
 
 var letterRunes = []rune("abcdefghijklmnopqrstuvwxyz1234567890")

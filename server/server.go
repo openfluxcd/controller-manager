@@ -5,14 +5,17 @@ import (
 	"net/http"
 	"time"
 
+	"k8s.io/apimachinery/pkg/runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+
 	"github.com/openfluxcd/controller-manager/storage"
 )
 
 type StartServer func(path, address string) error
 
 // InitializeStorage creates a storage and returns the means to launch a file server to serve created Artifacts.
-func InitializeStorage(path, storageAddress string, artifactRetentionTTL time.Duration, artifactRetentionRecords int) (StartServer, *storage.Storage, error) {
-	stg, err := storage.NewStorage(path, storageAddress, artifactRetentionTTL, artifactRetentionRecords)
+func InitializeStorage(c client.Client, scheme *runtime.Scheme, path, storageAddress string, artifactRetentionTTL time.Duration, artifactRetentionRecords int) (StartServer, *storage.Storage, error) {
+	stg, err := storage.NewStorage(c, scheme, path, storageAddress, artifactRetentionTTL, artifactRetentionRecords)
 	if err != nil {
 		return nil, nil, fmt.Errorf("error initializing storage: %v", err)
 	}
