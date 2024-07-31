@@ -208,7 +208,7 @@ func (s Storage) NewArtifactFor(kind string, metadata metav1.Object, revision, f
 	urlBase := ArtifactURLBase(kind, metadata.GetNamespace(), metadata.GetName(), fileName)
 	artifact := v1.Artifact{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      kind + "-" + metadata.GetNamespace() + "-" + metadata.GetName(),
+			Name:      strings.ToLower(kind + "-" + metadata.GetNamespace() + "-" + metadata.GetName()),
 			Namespace: metadata.GetNamespace(),
 		},
 		Spec: v1.ArtifactSpec{
