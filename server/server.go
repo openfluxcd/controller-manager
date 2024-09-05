@@ -23,7 +23,7 @@ func NewStorage(c client.Client, scheme *runtime.Scheme, path, storageAddress st
 }
 
 type ArtifactServer struct {
-	*http.Server
+	server  *http.Server
 	timeout time.Duration
 }
 
@@ -37,7 +37,7 @@ func NewArtifactServer(path string, address string, timeout time.Duration) (*Art
 		Handler: mux,
 	}
 	as := &ArtifactServer{
-		Server:  s,
+		server:  s,
 		timeout: timeout,
 	}
 	return as, nil
@@ -46,7 +46,7 @@ func NewArtifactServer(path string, address string, timeout time.Duration) (*Art
 func (s *ArtifactServer) Start(ctx context.Context) error {
 	serverErr := make(chan error, 1)
 	go func() {
-		serverErr <- s.ListenAndServe()
+		serverErr <- s.server.ListenAndServe()
 	}()
 	var err error
 	var cancel context.CancelFunc
@@ -54,7 +54,7 @@ func (s *ArtifactServer) Start(ctx context.Context) error {
 	case <-ctx.Done():
 		ctx, cancel = context.WithTimeout(context.Background(), s.timeout)
 		defer cancel()
-		err = s.Shutdown(ctx)
+		err = s.server.Shutdown(ctx)
 	case err = <-serverErr:
 	}
 	return err
