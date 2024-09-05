@@ -2,7 +2,6 @@ package server
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"net/http"
 	"time"
@@ -58,8 +57,7 @@ func (s *ArtifactServer) Start(ctx context.Context) error {
 		err = s.server.Shutdown(ctx)
 	case err = <-serverErr:
 	}
-	if errors.Is(err, http.ErrServerClosed) {
-		return nil
-	}
+
+	// serverErrs that occur after Shutdown is called are currently ignored.
 	return err
 }
