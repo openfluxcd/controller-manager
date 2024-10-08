@@ -44,6 +44,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
 	v1 "github.com/openfluxcd/artifact/api/v1alpha1"
+
 	intdigest "github.com/openfluxcd/controller-manager/digest"
 	sourcefs "github.com/openfluxcd/controller-manager/fs"
 )

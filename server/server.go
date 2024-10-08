@@ -43,8 +43,8 @@ func NewArtifactServer(path string, address string, timeout time.Duration) (*Art
 	return as, nil
 }
 
-func NewArtifactStore(c client.Client, scheme *runtime.Scheme, path, storageAddress string, artifactRetentionTTL time.Duration, artifactRetentionRecords int) (*storage.Storage, *ArtifactServer, error) {
-	strg, err := NewStorage(c, scheme, path, storageAddress, artifactRetentionTTL, artifactRetentionRecords)
+func NewArtifactStore(c client.Client, scheme *runtime.Scheme, path, storageAddress, advertisedStorageAddress string, artifactRetentionTTL time.Duration, artifactRetentionRecords int) (*storage.Storage, *ArtifactServer, error) {
+	strg, err := NewStorage(c, scheme, path, advertisedStorageAddress, artifactRetentionTTL, artifactRetentionRecords)
 	if err != nil {
 		return nil, nil, err
 	}
