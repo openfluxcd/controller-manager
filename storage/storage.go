@@ -133,8 +133,8 @@ func (s Storage) ReconcileArtifact(ctx context.Context, obj Collectable, revisio
 
 	createArtifact := curArtifact.DeepCopy()
 	if _, err = controllerutil.CreateOrUpdate(ctx, s.kclient, createArtifact, func() error {
-		if artifact.ObjectMeta.CreationTimestamp.IsZero() {
-			if err := controllerutil.SetOwnerReference(obj, &artifact, s.scheme); err != nil {
+		if createArtifact.ObjectMeta.CreationTimestamp.IsZero() {
+			if err := controllerutil.SetOwnerReference(obj, createArtifact, s.scheme); err != nil {
 				return fmt.Errorf("failed to set owner reference: %w", err)
 			}
 		}
