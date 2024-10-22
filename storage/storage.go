@@ -107,7 +107,7 @@ func (s Storage) ReconcileArtifact(ctx context.Context, obj Collectable, revisio
 	// Create potential new artifact with current available metadata
 	artifact := s.NewArtifactFor(obj.GetKind(), obj.GetObjectMeta(), revision, filename)
 
-	curArtifact = &artifact
+	curArtifact = artifact.DeepCopy()
 
 	// Ensure target path exists and is a directory
 	if f, err := os.Stat(dir); err != nil {
