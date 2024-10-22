@@ -99,15 +99,16 @@ func (s Storage) ReconcileArtifact(ctx context.Context, obj Collectable, revisio
 	// The artifact is up-to-date
 	// Since digest is set by the end of reconciling an artifact,
 	// we'll know if the artifact was created anew or if it already existed.
-	if HasRevision(curArtifact, revision) {
+	if s.ArtifactExist(*curArtifact) && HasRevision(curArtifact, revision) {
 		return nil
+
 	}
 
 	// We don't need to check this here...
 	// Create potential new artifact with current available metadata
 	artifact := s.NewArtifactFor(obj.GetKind(), obj.GetObjectMeta(), revision, filename)
 
-	curArtifact = artifact.DeepCopy()
+	curArtifact = &artifact
 
 	// Ensure target path exists and is a directory
 	if f, err := os.Stat(dir); err != nil {
