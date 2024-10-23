@@ -140,7 +140,7 @@ func TestStorage_Archive(t *testing.T) {
 		return
 	}
 
-	matchFiles := func(t *testing.T, storage *Storage, artifact v1.Artifact, files map[string]dummyFile, dirs []string) {
+	matchFiles := func(t *testing.T, storage *Storage, artifact *v1.Artifact, files map[string]dummyFile, dirs []string) {
 		t.Helper()
 		for name, df := range files {
 			mustExist := !(name[0:1] == "!")
@@ -293,13 +293,13 @@ func TestStorage_Archive(t *testing.T) {
 					URL: "http://hostname/" + filepath.Join(randStringRunes(10), randStringRunes(10), randStringRunes(10)+".tar.gz"),
 				},
 			}
-			if err := storage.MkdirAll(artifact); err != nil {
+			if err := storage.MkdirAll(&artifact); err != nil {
 				t.Fatalf("artifact directory creation failed: %v", err)
 			}
 			if err := storage.Archive(&artifact, dir, tt.filter); (err != nil) != tt.wantErr {
 				t.Errorf("Archive() error = %v, wantErr %v", err, tt.wantErr)
 			}
-			matchFiles(t, storage, artifact, tt.want, tt.wantDirs)
+			matchFiles(t, storage, &artifact, tt.want, tt.wantDirs)
 		})
 	}
 }
@@ -318,12 +318,12 @@ func TestStorage_Remove(t *testing.T) {
 				URL: "http://" + filepath.Join(dir, "test.txt"),
 			},
 		}
-		g.Expect(s.MkdirAll(artifact)).To(Succeed())
+		g.Expect(s.MkdirAll(&artifact)).To(Succeed())
 		g.Expect(s.AtomicWriteFile(&artifact, bytes.NewReader([]byte("test")), 0o600)).To(Succeed())
-		g.Expect(s.ArtifactExist(artifact)).To(BeTrue())
+		g.Expect(s.ArtifactExist(&artifact)).To(BeTrue())
 
-		g.Expect(s.Remove(artifact)).To(Succeed())
-		g.Expect(s.ArtifactExist(artifact)).To(BeFalse())
+		g.Expect(s.Remove(&artifact)).To(Succeed())
+		g.Expect(s.ArtifactExist(&artifact)).To(BeFalse())
 	})
 
 	t.Run("error if file does not exist", func(t *testing.T) {
@@ -340,7 +340,7 @@ func TestStorage_Remove(t *testing.T) {
 			},
 		}
 
-		err = s.Remove(artifact)
+		err = s.Remove(&artifact)
 		g.Expect(err).To(HaveOccurred())
 		g.Expect(errors.Is(err, os.ErrNotExist)).To(BeTrue())
 	})
@@ -355,7 +355,7 @@ func TestStorageRemoveAllButCurrent(t *testing.T) {
 			t.Fatalf("Valid path did not successfully return: %v", err)
 		}
 
-		if _, err := s.RemoveAllButCurrent(v1.Artifact{
+		if _, err := s.RemoveAllButCurrent(&v1.Artifact{
 			Spec: v1.ArtifactSpec{
 				URL: "http://" + filepath.Join(dir, "really", "nonexistent"),
 			},
@@ -397,10 +397,10 @@ func TestStorageRemoveAllButCurrent(t *testing.T) {
 		}
 		createFile(current)
 		createFile(wantDeleted)
-		_, err = s.Symlink(artifact, "latest.tar.gz")
+		_, err = s.Symlink(&artifact, "latest.tar.gz")
 		g.Expect(err).ToNot(HaveOccurred(), "failed to create symlink")
 
-		deleted, err := s.RemoveAllButCurrent(artifact)
+		deleted, err := s.RemoveAllButCurrent(&artifact)
 		g.Expect(err).ToNot(HaveOccurred(), "failed to remove all but current")
 		g.Expect(deleted).To(Equal(wantDeleted))
 	})
@@ -445,7 +445,7 @@ func TestStorageRemoveAll(t *testing.T) {
 				g.Expect(os.MkdirAll(filepath.Join(dir, tt.artifactPath), 0o750)).ToNot(HaveOccurred())
 			}
 
-			deleted, err := s.RemoveAll(artifact)
+			deleted, err := s.RemoveAll(&artifact)
 			g.Expect(err).ToNot(HaveOccurred())
 			g.Expect(deleted).To(ContainSubstring(tt.wantDeleted), "unexpected deleted path")
 		})
@@ -484,7 +484,7 @@ func TestStorageCopyFromPath(t *testing.T) {
 	}
 
 	matchFile := func(t *testing.T, storage *Storage, artifact v1.Artifact, file *File, expectMismatch bool) {
-		c, err := os.ReadFile(storage.LocalPath(artifact))
+		c, err := os.ReadFile(storage.LocalPath(&artifact))
 		if err != nil {
 			t.Fatalf("failed reading file: %v", err)
 		}
@@ -535,7 +535,7 @@ func TestStorageCopyFromPath(t *testing.T) {
 					URL: "http://" + filepath.Join(randStringRunes(10), randStringRunes(10), randStringRunes(10)),
 				},
 			}
-			if err := storage.MkdirAll(artifact); err != nil {
+			if err := storage.MkdirAll(&artifact); err != nil {
 				t.Fatalf("artifact directory creation failed: %v", err)
 			}
 			if err := storage.CopyFromPath(&artifact, absPath); err != nil {
@@ -698,7 +698,7 @@ func TestStorage_getGarbageFiles(t *testing.T) {
 				time.Sleep(tt.createPause)
 			}
 
-			deletedPaths, err := s.getGarbageFiles(artifact, tt.totalCountLimit, tt.maxItemsToBeRetained, tt.ttl)
+			deletedPaths, err := s.getGarbageFiles(&artifact, tt.totalCountLimit, tt.maxItemsToBeRetained, tt.ttl)
 			g.Expect(err).ToNot(HaveOccurred(), "failed to collect garbage files")
 			g.Expect(len(tt.wantDeleted)).To(Equal(len(deletedPaths)))
 			for _, wantDeletedPath := range tt.wantDeleted {
@@ -785,7 +785,7 @@ func TestStorage_GarbageCollect(t *testing.T) {
 				}
 			}
 
-			collectedPaths, err := s.GarbageCollect(context.TODO(), artifact, tt.ctxTimeout)
+			collectedPaths, err := s.GarbageCollect(context.TODO(), &artifact, tt.ctxTimeout)
 			if tt.wantErr == "" {
 				g.Expect(err).ToNot(HaveOccurred(), "failed to collect garbage files")
 			} else {
@@ -827,7 +827,7 @@ func TestStorage_VerifyArtifact(t *testing.T) {
 	t.Run("artifact without digest", func(t *testing.T) {
 		g := NewWithT(t)
 
-		err := s.VerifyArtifact(v1.Artifact{})
+		err := s.VerifyArtifact(&v1.Artifact{})
 		g.Expect(err).To(HaveOccurred())
 		g.Expect(err).To(MatchError("artifact has no digest"))
 	})
@@ -836,7 +836,7 @@ func TestStorage_VerifyArtifact(t *testing.T) {
 		g := NewWithT(t)
 
 		err := s.VerifyArtifact(
-			v1.Artifact{
+			&v1.Artifact{
 				Spec: v1.ArtifactSpec{
 					Digest: "invalid",
 				},
@@ -849,7 +849,7 @@ func TestStorage_VerifyArtifact(t *testing.T) {
 	t.Run("artifact with invalid path", func(t *testing.T) {
 		g := NewWithT(t)
 
-		err := s.VerifyArtifact(v1.Artifact{
+		err := s.VerifyArtifact(&v1.Artifact{
 			Spec: v1.ArtifactSpec{
 				Digest: "sha256:9ba7a35ce8acd3557fe30680ef193ca7a36bb5dc62788f30de7122a0a5beab69",
 				URL:    "invalid",
@@ -862,7 +862,7 @@ func TestStorage_VerifyArtifact(t *testing.T) {
 	t.Run("artifact with digest mismatch", func(t *testing.T) {
 		g := NewWithT(t)
 
-		err := s.VerifyArtifact(v1.Artifact{
+		err := s.VerifyArtifact(&v1.Artifact{
 			Spec: v1.ArtifactSpec{
 				Digest: "sha256:9ba7a35ce8acd3557fe30680ef193ca7a36bb5dc62788f30de7122a0a5beab69",
 				URL:    "http://artifact",
@@ -875,7 +875,7 @@ func TestStorage_VerifyArtifact(t *testing.T) {
 	t.Run("artifact with digest match", func(t *testing.T) {
 		g := NewWithT(t)
 
-		err := s.VerifyArtifact(v1.Artifact{
+		err := s.VerifyArtifact(&v1.Artifact{
 			Spec: v1.ArtifactSpec{
 				URL:    "http://artifact",
 				Digest: "sha256:9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
