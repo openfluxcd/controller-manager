@@ -21,7 +21,6 @@ import (
 	"math/rand"
 	"os"
 	"testing"
-	"time"
 
 	_ "github.com/distribution/distribution/v3/registry/auth/htpasswd"
 	_ "github.com/distribution/distribution/v3/registry/storage/driver/inmemory"
@@ -33,11 +32,6 @@ import (
 // using gomega.NewWithT.
 // Refer to http://onsi.github.io/gomega/ to learn more about
 // Gomega.
-
-const (
-	retentionTTL     = 2 * time.Second
-	retentionRecords = 2
-)
 
 var testServer *testserver.ArtifactServer
 
@@ -82,8 +76,4 @@ func randStringRunes(n int) string {
 		b[i] = letterRunes[rand.Intn(len(letterRunes))]
 	}
 	return string(b)
-}
-
-func int64p(i int64) *int64 {
-	return &i
 }

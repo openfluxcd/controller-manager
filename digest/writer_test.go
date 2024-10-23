@@ -95,7 +95,9 @@ func benchmarkMultiDigesterWrite(b *testing.B, algos []digest.Algorithm, pSize i
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		md.Write(p)
+		if _, err := md.Write(p); err != nil {
+			b.Fatal(err)
+		}
 	}
 }
 
