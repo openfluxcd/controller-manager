@@ -1,0 +1,36 @@
+name: CI checks
+
+on:
+  pull_request: {}
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: '${{ github.workspace }}/go.mod'
+      - name: Get golangci-lint version from Makefile
+        id: get-golangci-lint-version
+        run: |
+          version=$(grep 'GOLANGCI_LINT_VERSION\s*?' Makefile | awk -F '=' '{print $2}' | tr -d ' ')
+          echo "GOLANGCI_LINT_VERSION=${version}" >> $GITHUB_ENV
+      - name: Run golangci-lint
+        uses: golangci/golangci-lint-action@v6
+        with:
+          version: ${{ env.GOLANGCI_LINT_VERSION }}
+
+  tests:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: '${{ github.workspace }}/go.mod'
+      - name: Run tests
+        run: make test
