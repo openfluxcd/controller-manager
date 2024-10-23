@@ -99,7 +99,7 @@ func (s Storage) ReconcileArtifact(ctx context.Context, obj Collectable, revisio
 	// The artifact is up-to-date
 	// Since digest is set by the end of reconciling an artifact,
 	// we'll know if the artifact was created anew or if it already existed.
-	if HasRevision(curArtifact, revision) {
+	if curArtifact != nil && s.ArtifactExist(*curArtifact) && HasRevision(curArtifact, revision) {
 		return nil
 	}
 
