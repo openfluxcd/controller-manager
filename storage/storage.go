@@ -805,7 +805,7 @@ func (s *Storage) LocalPath(artifact *v1.Artifact) string {
 		return ""
 	}
 
-	return dummy
+	return path
 }
 
 // LocalPathFromURL returns the local path on the file-system given the URL of the artifact.
