@@ -819,7 +819,6 @@ func (s *Storage) LocalPathFromURL(artifact *v1.Artifact) string {
 	return actualFilePath
 }
 
-// this should most likely be extracted into the controller-manager
 func (s *Storage) findArtifact(ctx context.Context, object client.Object) (*v1.Artifact, error) {
 	// this should look through ALL the artifacts and look if the owner is THIS object.
 	list := &v1.ArtifactList{}
@@ -828,11 +827,6 @@ func (s *Storage) findArtifact(ctx context.Context, object client.Object) (*v1.A
 	}
 
 	for _, artifact := range list.Items {
-		if len(artifact.GetOwnerReferences()) != 1 {
-			// ignore artifacts with multiple owners -> this should throw an error?
-			continue
-		}
-
 		for _, owner := range artifact.OwnerReferences {
 			if owner.Name == object.GetName() {
 				return &artifact, nil
