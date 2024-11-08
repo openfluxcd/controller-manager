@@ -17,7 +17,7 @@ require (
 	github.com/onsi/gomega v1.33.1
 	github.com/opencontainers/go-digest v1.0.0
 	github.com/opencontainers/go-digest/blake3 v0.0.0-20240426182413-22b78e47854a
-	github.com/openfluxcd/artifact v0.0.0-20240716155959-1444c21d5f7c
+	github.com/openfluxcd/artifact v0.1.1
 	k8s.io/apimachinery v0.30.3
 	sigs.k8s.io/controller-runtime v0.18.2
 )

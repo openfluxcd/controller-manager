@@ -134,8 +134,8 @@ github.com/opencontainers/go-digest v1.0.1-0.20220411205349-bde1400a84be h1:f2Pl
 github.com/opencontainers/go-digest v1.0.1-0.20220411205349-bde1400a84be/go.mod h1:0JzlMkj0TRzQZfJkVvzbP0HBR3IKzErnv2BNG4W4MAM=
 github.com/opencontainers/go-digest/blake3 v0.0.0-20240426182413-22b78e47854a h1:xwooQrLddjfeKhucuLS4ElD3TtuuRwF8QWC9eHrnbxY=
 github.com/opencontainers/go-digest/blake3 v0.0.0-20240426182413-22b78e47854a/go.mod h1:kqQaIc6bZstKgnGpL7GD5dWoLKbA6mH1Y9ULjGImBnM=
-github.com/openfluxcd/artifact v0.0.0-20240716155959-1444c21d5f7c h1:/PxMr0oPWh9JW/PDCjHCZuYhXRINUo7UTOApmSY9TD8=
-github.com/openfluxcd/artifact v0.0.0-20240716155959-1444c21d5f7c/go.mod h1:oW3t3lDk9TvP0EQEQzCzQH7qwO6H7OCHmF/xbAXhMyI=
+github.com/openfluxcd/artifact v0.1.1 h1:sSpaUYAbvXty+NRldYhVqIGK+7pyfow/IM+IrwrLRHI=
+github.com/openfluxcd/artifact v0.1.1/go.mod h1:A+2bRh4vjyFK5A/mtfefqXA0weNSnazkkMJPJ4SMzm8=
 github.com/pkg/errors v0.8.0/go.mod h1:bwawxfHBFNV+L2hUp1rHADufV3IMtnDRdf1r5NINEl0=
 github.com/pkg/errors v0.9.1 h1:FEBLx1zS214owpjy7qsBeixbURkuhQAwrK5UwLGTwt4=
 github.com/pkg/errors v0.9.1/go.mod h1:bwawxfHBFNV+L2hUp1rHADufV3IMtnDRdf1r5NINEl0=
